@@ -67,6 +67,8 @@ class WriteBufferManager final {
   static constexpr uint64_t kNoDelayedWriteFactor = 0U;
   static constexpr uint64_t kMaxDelayedWriteFactor = 100U;
   static constexpr uint64_t kStopDelayedWriteFactor = kMaxDelayedWriteFactor;
+  static constexpr double kMutableLimit = 0.875;
+
   enum class UsageState { kNone, kDelay, kStop };
 
  public:
@@ -152,6 +154,10 @@ class WriteBufferManager final {
     return ((inactive >= total) ? 0 : (total - inactive));
   }
 
+  int64_t memory_above_flush_trigger() {
+    return memory_usage() - buffer_size() * kMutableLimit;
+  }
+
   // Returns the total inactive memory used by memtables.
   size_t immmutable_memtable_memory_usage() const {
     return memory_inactive_.load(std::memory_order_relaxed);
@@ -180,7 +186,7 @@ class WriteBufferManager final {
     [[maybe_unused]] auto was_enabled = enabled();
 
     buffer_size_.store(new_size, std::memory_order_relaxed);
-    mutable_limit_.store(new_size * 7 / 8, std::memory_order_relaxed);
+    mutable_limit_.store(new_size * kMutableLimit, std::memory_order_relaxed);
 
     assert(was_enabled == enabled());
 

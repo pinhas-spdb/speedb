@@ -1747,9 +1747,13 @@ Status DBImpl::HandleWriteBufferManagerFlush(WriteContext* write_context) {
   if (immutable_db_options_.atomic_flush) {
     SelectColumnFamiliesForAtomicFlush(&cfds);
   } else {
-    ColumnFamilyData* cfd_picked = nullptr;
-    SequenceNumber seq_num_for_cf_picked = kMaxSequenceNumber;
-
+    // As part of https://github.com/speedb-io/speedb/pull/859, theres a need to
+    // schedule more flushes since the cfd picked for flush was the oldest one
+    // and not necessarily enough to resolve the stall issue.
+    // For this reason, schedule enough flushes so that the memory usage is at
+    // least below the flush trigger (kMutableLimit * buffer_size)
+    int64_t total_mem_to_free =
+        write_buffer_manager()->memory_above_flush_trigger();
     for (auto cfd : *versions_->GetColumnFamilySet()) {
       if (cfd->IsDropped()) {
         continue;
@@ -1759,16 +1763,15 @@ Status DBImpl::HandleWriteBufferManagerFlush(WriteContext* write_context) {
         // and no immutable memtables for which flush has yet to finish. If
         // we triggered flush on CFs already trying to flush, we would risk
         // creating too many immutable memtables leading to write stalls.
-        uint64_t seq = cfd->mem()->GetCreationSeq();
-        if (cfd_picked == nullptr || seq < seq_num_for_cf_picked) {
-          cfd_picked = cfd;
-          seq_num_for_cf_picked = seq;
+        auto mem_used = cfd->mem()->ApproximateMemoryUsage();
+        cfds.push_back(cfd);
+        total_mem_to_free -= mem_used;
+        if (total_mem_to_free <= 0) {
+          break;
         }
       }
     }
-    if (cfd_picked != nullptr) {
-      cfds.push_back(cfd_picked);
-    }
+
     MaybeFlushStatsCF(&cfds);
   }
   if (!cfds.empty()) {

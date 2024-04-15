@@ -10,6 +10,7 @@
 
 ### Bug Fixes
 * LOG Consistency:Display the pinning policy options same as block cache options / metadata cache options (#804).
+* WBM: fix allow_stall deadlock with multiple cfs.
 
 ### Miscellaneous
 * WriteController logging: Remove redundant reports when WC is not shared between dbs

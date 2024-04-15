@@ -54,7 +54,7 @@ WriteBufferManager::WriteBufferManager(
     const FlushInitiationOptions& flush_initiation_options,
     uint16_t start_delay_percent)
     : buffer_size_(_buffer_size),
-      mutable_limit_(buffer_size_ * 7 / 8),
+      mutable_limit_(buffer_size_ * kMutableLimit),
       memory_used_(0),
       memory_inactive_(0),
       memory_being_freed_(0U),
@@ -111,6 +111,12 @@ void WriteBufferManager::ReserveMem(size_t mem) {
     auto old_memory_used =
         memory_used_.fetch_add(mem, std::memory_order_relaxed);
     new_memory_used = old_memory_used + mem;
+  }
+  for (auto loggers : loggers_to_client_ids_map_) {
+    ROCKS_LOG_WARN(loggers.first,
+                   "WBM (%p) ReserveMem called with:  %" PRIu64
+                   " , memory_used: %" PRIu64,
+                   this, mem, new_memory_used);
   }
   if (is_enabled) {
     UpdateUsageState(new_memory_used, static_cast<int64_t>(mem), buffer_size());
@@ -177,7 +183,12 @@ void WriteBufferManager::FreeMem(size_t mem) {
     assert(old_memory_used >= mem);
     new_memory_used = old_memory_used - mem;
   }
-
+  for (auto loggers : loggers_to_client_ids_map_) {
+    ROCKS_LOG_WARN(loggers.first,
+                   "WBM (%p) FreeMem called with: %" PRIu64
+                   ", memory_used: %" PRIu64,
+                   this, mem, new_memory_used);
+  }
   if (is_enabled) {
     [[maybe_unused]] const auto curr_memory_inactive =
         memory_inactive_.fetch_sub(mem, std::memory_order_relaxed);
