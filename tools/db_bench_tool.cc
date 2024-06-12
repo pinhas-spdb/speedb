@@ -2887,6 +2887,7 @@ class Duration {
     max_ops_ = max_ops;
     ops_per_stage_ = (ops_per_stage > 0) ? ops_per_stage : max_ops;
     ops_ = 0;
+    ops_modulo_ = 0;
     start_at_ = FLAGS_env->NowMicros();
   }
 
@@ -2895,12 +2896,14 @@ class Duration {
   bool Done(int64_t increment) {
     if (increment <= 0) increment = 1;  // avoid Done(0) and infinite loops
     ops_ += increment;
+    ops_modulo_ += increment;
 
     if (max_seconds_) {
       // Recheck every appx 1000 ops (exact iff increment is factor of 1000)
       auto granularity = FLAGS_ops_between_duration_checks;
-      if ((ops_ / granularity) != ((ops_ - increment) / granularity)) {
+      if (ops_modulo_ >= granularity) {
         uint64_t now = FLAGS_env->NowMicros();
+        ops_modulo_ -= granularity;
         return ((now - start_at_) / 1000000) >= max_seconds_;
       } else {
         return false;
@@ -2915,6 +2918,7 @@ class Duration {
   int64_t max_ops_;
   int64_t ops_per_stage_;
   int64_t ops_;
+  int64_t ops_modulo_;
   uint64_t start_at_;
 };
 
